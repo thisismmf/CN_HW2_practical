@@ -1,39 +1,49 @@
 import socket
 
-# Function to handle client requests
-def handle_client(client_socket):
-    try:
-        # Receive data from the client
-        while True:
-            data = client_socket.recv(4096)
-            if not data:
-                break
-            # Process the request (echo back in this example)
-            client_socket.sendall(data)
-    except Exception as e:
-        print(f"Error handling client request: {str(e)}")
-    finally:
-        client_socket.close()
+# Define the host and port on which the backend server will listen for requests
+HOST = '127.0.0.1'  # Loopback address for localhost
+PORT = 8001  # Example port, you can change this as needed
 
-# Function to start the backend server
-def start_backend_server():
+
+def handle_client_connection(client_socket):
+    """
+    Function to handle incoming client connections
+    """
+    # Receive data from the client
+    request = client_socket.recv(1024).decode('utf-8')
+
+    # Process the request (replace this with your own processing logic)
+    response = "Hello from the backend server! Your request: " + request
+
+    # Send the response back to the client
+    client_socket.send(response.encode('utf-8'))
+
+    # Close the client socket
+    client_socket.close()
+
+
+def start_server():
+    """
+    Function to start the backend server
+    """
     # Create a TCP socket
-    backend_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    backend_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        # Bind the socket to the host and port
+        server_socket.bind((HOST, PORT))
 
-    # Bind the socket to a port
-    backend_socket.bind(('localhost', 8081))  # You can change the IP and port as needed
+        # Listen for incoming connections
+        server_socket.listen(5)
+        print(f"Backend server listening on {HOST}:{PORT}")
 
-    # Listen for incoming connections
-    backend_socket.listen(5)
-    print("Backend server is listening on port 8081...")
+        # Server loop: accept incoming connections and handle them
+        while True:
+            # Accept a client connection
+            client_socket, client_address = server_socket.accept()
+            print(f"Accepted connection from {client_address}")
 
-    # Accept incoming connections and handle client requests
-    while True:
-        client_socket, address = backend_socket.accept()
-        print(f"Connection from {address}")
-        # Handle the client request in a separate thread
-        handle_client(client_socket)
+            # Handle the client connection in a separate thread (optional)
+            handle_client_connection(client_socket)
 
-# Start the backend server
-start_backend_server()
+
+if __name__ == "__main__":
+    start_server()

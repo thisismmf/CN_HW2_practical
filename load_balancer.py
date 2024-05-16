@@ -2,101 +2,97 @@ import socket
 import threading
 import time
 
-# Define the configuration file path
-CONFIG_FILE = "config.txt"
+# Global variables for server list, current server index, and lock for thread safety
+SERVER_LIST = [("127.0.0.1", 8000), ("127.0.0.1", 8001), ("127.0.0.1", 8002)]  # Example list of backend servers
+CURRENT_SERVER_INDEX = 0
+LOCK = threading.Lock()
 
-# Function to read server configurations from the config file
-def read_config():
-    servers = []
-    with open(CONFIG_FILE, "r") as file:
-        for line in file:
-            ip, port = line.strip().split(":")
-            servers.append((ip, int(port)))
-    return servers
 
-# Function to perform health checks on backend servers
-def check_server(server):
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(300)  # Adjust timeout as needed
-        s.connect(server)
-        s.close()
-        return True
-    except Exception as e:
-        print(f"Error checking server {server}: {str(e)}")
-        return False
+def handle_client_connection(client_socket):
+    """
+    Function to handle incoming client connections
+    """
+    global CURRENT_SERVER_INDEX
 
-# Function to periodically check the health of backend servers
+    # Acquire lock for thread safety when accessing CURRENT_SERVER_INDEX
+    with LOCK:
+        # Get the next server from the list using Round Robin algorithm
+        server_address = SERVER_LIST[CURRENT_SERVER_INDEX]
+        CURRENT_SERVER_INDEX = (CURRENT_SERVER_INDEX + 1) % len(SERVER_LIST)
+
+    # Log the request forwarding
+    print(f"Forwarding request to server at {server_address}")
+
+    # Connect to the selected backend server
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.connect(server_address)
+
+    # Forward the client request to the backend server
+    request = client_socket.recv(1024)
+    server_socket.send(request)
+
+    # Receive the response from the backend server
+    response = server_socket.recv(1024)
+
+    # Send the response back to the client
+    client_socket.send(response)
+
+    # Close the sockets
+    server_socket.close()
+    client_socket.close()
+
+
 def health_check():
+    """
+    Function to perform health checks on backend servers
+    """
     while True:
-        for server in list(backend_servers):
-            if not check_server(server):
-                print(f"Server {server} is not responding. Removing from the list.")
-                backend_servers.remove(server)
-        time.sleep(10)  # Adjust the interval as needed
+        # Iterate through the server list and check the health of each server
+        for server_address in SERVER_LIST:
+            try:
+                # Attempt to connect to the server
+                health_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                health_socket.connect(server_address)
+                health_socket.close()
+                print(f"Server at {server_address} is healthy")
+            except:
+                # If connection fails, remove the server from the list
+                print(f"Server at {server_address} is unreachable. Removing from the list.")
+                with LOCK:
+                    SERVER_LIST.remove(server_address)
 
-# Function to handle client requests
-def handle_client(client_socket, server):
-    server_ip, server_port = server
-    try:
-        # Connect to the backend server
-        backend_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        backend_socket.connect((server_ip, server_port))
+        # Wait for a specified interval before performing the next health check
+        time.sleep(60)
 
-        # Forward the client request to the backend server
-        while True:
-            data = client_socket.recv(4096)
-            if not data:
-                break
-            backend_socket.sendall(data)
 
-        # Receive response from the backend server and send it back to the client
-        while True:
-            data = backend_socket.recv(4096)
-            if not data:
-                break
-            client_socket.sendall(data)
-
-    except Exception as e:
-        print(f"Error handling client request: {str(e)}")
-
-    finally:
-        client_socket.close()
-        backend_socket.close()
-
-# Function to start the load balancer
 def start_load_balancer():
+    """
+    Function to start the load balancer
+    """
     # Create a TCP socket
-    lb_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lb_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as lb_socket:
+        # Bind the socket to the localhost and a port
+        lb_socket.bind(('127.0.0.1', 9000))  # Example port, you can change this as needed
 
-    # Bind the socket to a port
-    lb_socket.bind(('localhost', 8888))  # You can change the IP and port as needed
+        # Listen for incoming connections
+        lb_socket.listen(5)
+        print("Load balancer listening on port 9000...")
 
-    # Listen for incoming connections
-    lb_socket.listen(5)
-    print("Load balancer is listening on port 8888...")
+        # Start the health check thread
+        health_thread = threading.Thread(target=health_check)
+        health_thread.daemon = True  # Set the thread as a daemon so it terminates when the main program exits
+        health_thread.start()
 
-    # Start the health check thread
-    health_check_thread = threading.Thread(target=health_check)
-    health_check_thread.daemon = True
-    health_check_thread.start()
+        # Main server loop: accept incoming connections and handle them
+        while True:
+            # Accept a client connection
+            client_socket, client_address = lb_socket.accept()
+            print(f"Accepted connection from {client_address}")
 
-    # Accept incoming connections and forward requests to backend servers
-    while True:
-        client_socket, address = lb_socket.accept()
-        print(f"Connection from {address}")
+            # Handle the client connection in a separate thread (optional)
+            client_thread = threading.Thread(target=handle_client_connection, args=(client_socket,))
+            client_thread.start()
 
-        # Round Robin logic to forward requests to backend servers
-        server = backend_servers.pop(0)
-        backend_servers.append(server)
 
-        # Handle the client request in a separate thread
-        client_thread = threading.Thread(target=handle_client, args=(client_socket, server))
-        client_thread.start()
-
-# Read server configurations from the config file
-backend_servers = read_config()
-
-# Start the load balancer
-start_load_balancer()
+if __name__ == "__main__":
+    start_load_balancer()

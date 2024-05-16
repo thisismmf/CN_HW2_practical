@@ -2,7 +2,7 @@ import socket
 
 # Define the host and port on which the backend server will listen for requests
 HOST = '127.0.0.1'  # Loopback address for localhost
-PORT = 8000  # Example port, you can change this as needed
+PORT = 8002  # Example port, you can change this as needed
 
 
 def handle_client_connection(client_socket):

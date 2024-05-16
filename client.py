@@ -1,32 +1,34 @@
 import socket
+import time
 
-def send_request(message):
-    # Create a TCP socket
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+def send_request(index:int):
+    """
+    Function to send a request to the load balancer
+    """
     # Connect to the load balancer
-    client_socket.connect(('localhost', 8888))  # Use the IP and port of the load balancer
+    lb_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    lb_socket.connect(('127.0.0.1', 9000))  # Connect to localhost and port 9000
 
-    try:
-        # Send the request to the load balancer
-        client_socket.sendall(message.encode())
+    # Send a sample request
+    request = bytes(f"Sample request number, {index}", 'utf-8')
+    lb_socket.send(request)
 
-        # Receive and print the response
-        response = client_socket.recv(4096)
-        print("Response:", response.decode())
+    # Receive the response from the load balancer
+    response = lb_socket.recv(1024)
+    print("Response from load balancer:", response.decode('utf-8'))
 
-    except Exception as e:
-        print(f"Error sending request: {str(e)}")
+    # Close the socket
+    lb_socket.close()
 
-    finally:
-        # Close the socket
-        client_socket.close()
 
-# Test the load balancer by sending multiple requests
 if __name__ == "__main__":
-    # Test messages
-    messages = ["Hello from Client 1", "Hello from Client 2", "Hello from Client 3"]
+    # Number of requests to send
+    num_requests = 10
 
-    for message in messages:
-        print("Sending:", message)
-        send_request(message)
+    # Send multiple requests
+    for i in range(num_requests):
+        print(f"Sending request {i + 1}")
+        send_request(i+1)
+        # Pause for a short interval between requests
+        time.sleep(1)
